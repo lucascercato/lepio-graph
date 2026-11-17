@@ -1,0 +1,88 @@
+name: Build graph
+
+on:
+  schedule:
+    # Transport for Ireland republishes its timetables around midnight UTC.
+    - cron: '47 0 * * *'
+  workflow_dispatch:
+    inputs:
+      test_heap_mb:
+        description: 'Sizing test: cap the transit build heap at this many MB. Test runs are not published.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: graph-build
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TEST_HEAP_MB: ${{ inputs.test_heap_mb }}
+    steps:
+      # No third-party actions on purpose: plain commands only.
+      - name: Fetch the recipe
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+
+      - name: Install osmium
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+
+      - name: Build, measure and check
+        run: |
+          TAG="graph-$(date -u +%Y%m%d-%H%M)"
+          echo "TAG=$TAG" >>"$GITHUB_ENV"
+          TAG="$TAG" ./build.sh
+
+      # The release stays a draft until every file is uploaded, so nobody downloads half of it.
+      - name: Publish
+        if: env.TEST_HEAP_MB == ''
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "$TAG" \
+            --notes "OpenTripPlanner graph for Ireland, built from Transport for Ireland timetables and OpenStreetMap data. Licences and credits are in the README." \
+            out/graph.obj out/manifest.json out/logs.tar.gz
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("graph-"))] | sort_by(.createdAt) | reverse | .[3:] | .[].tagName' |
+            while read -r old; do
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
+
+      # A nightly record of the measurements. It also keeps the schedule alive: GitHub disables
+      # scheduled workflows in public repositories after 60 days without repository activity.
+      - name: Record the build
+        if: env.TEST_HEAP_MB == ''
+        run: |
+          mkdir -p status
+          cp out/manifest.json status/last-build.json
+          python3 -I - status/last-build.json status/builds.csv <<'EOF'
+          import csv, json, os, sys
+          manifest, path = json.load(open(sys.argv[1])), sys.argv[2]
+          steps = ("streets", "transit", "serve")
+          fields = ("seconds", "container_peak_mb", "anon_peak_mb", "live_after_full_gc_max_mb", "occupancy_before_gc_max_mb")
+          new = not os.path.exists(path)
+          with open(path, "a", newline="") as f:
+              out = csv.writer(f)
+              if new:
+                  out.writerow(["tag", "built_at", "gtfs_etag", "gtfs_bytes", "graph_bytes"] + [f"{s}_{k}" for s in steps for k in fields])
+              out.writerow([manifest["tag"], manifest["built_at"], manifest["gtfs"]["etag"], manifest["gtfs"]["bytes"], manifest["graph"]["bytes"]]
+                           + [manifest[s].get(k) for s in steps for k in fields])
+          EOF
+          git add status
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Record build $TAG"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main ||
+            echo "::warning::The build is published, but its record was not committed to main."

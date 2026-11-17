@@ -1,0 +1,10 @@
+{
+  "transitServiceStart": "-P3D",
+  "transitServiceEnd": "P60D",
+  "transitFeeds": [
+    { "type": "gtfs", "feedId": "tfi", "source": "GTFS_All.zip" }
+  ],
+  "osm": [
+    { "source": "ireland.osm.pbf", "osmTagMapping": "default" }
+  ]
+}
