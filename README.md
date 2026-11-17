@@ -32,7 +32,7 @@ The build needs a machine with 16 GB of memory.
 ## Data sources and licences
 
 - **Timetables:** Transport for Ireland / National Transport Authority GTFS data, licensed under the [Creative Commons Attribution 4.0 International licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). Contains Irish Public Sector Data (Transport for Ireland).
-- **Map:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, downloaded from [Geofabrik](https://download.geofabrik.de/). OpenStreetMap data is available under the [Open Database Licence (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+- **Map:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, downloaded from [Geofabrik](https://download.geofabrik.de/), or from [openstreetmap.fr](https://download.openstreetmap.fr/extracts/) when Geofabrik cannot be reached (the manifest says which). OpenStreetMap data is available under the [Open Database Licence (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
 
 The street network inside `graph.obj` is derived from OpenStreetMap data and is made available under the ODbL 1.0. The timetable data inside it remains under CC BY 4.0.
 

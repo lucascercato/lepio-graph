@@ -12,6 +12,9 @@ set -Eeuo pipefail
 OTP_IMAGE=opentripplanner/opentripplanner:2.10.0@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933
 GTFS_URL=https://www.transportforireland.ie/transitData/Data/GTFS_All.zip
 OSM_URL=https://download.geofabrik.de/europe/ireland-and-northern-ireland-latest.osm.pbf
+# Fallback when Geofabrik refuses the connection (it has refused GitHub's machines): two extracts, merged.
+OSM_FALLBACK=(https://download.openstreetmap.fr/extracts/europe/ireland-latest.osm.pbf
+  https://download.openstreetmap.fr/extracts/europe/united_kingdom/northern_ireland-latest.osm.pbf)
 # Only what routing needs: streets, platforms, park and ride, turn restrictions, route relations.
 OSM_FILTER=(w/highway wa/public_transport=platform wa/railway=platform w/park_ride=yes r/type=restriction r/type=route)
 # Below the 16 GB of a standard public runner: an overrun ends as exit 137 with logs, not as a lost runner.
@@ -195,9 +198,25 @@ zip_report=$(python3 -I -m zipfile -t "$WORK/GTFS_All.zip" 2>&1) || die gtfs_zip
 gtfs_sha=$(sha256sum "$WORK/GTFS_All.zip" | cut -d' ' -f1)
 gtfs_bytes=$(stat -c %s "$WORK/GTFS_All.zip")
 
-# 2. Map, filtered down to what routing needs. The raw extract does not stay in the build folder.
-curl -fsSL --retry 3 -m 1800 -D "$WORK/osm.headers" -o "$WORK/map.osm.pbf" "$OSM_URL" || die osm_download
-osm_modified=$(tr -d '\r' <"$WORK/osm.headers" | awk 'tolower($1) == "last-modified:" { $1 = ""; m = substr($0, 2) } END { print m }')
+# 2. Map, filtered down to what routing needs. The raw extracts do not stay in the build folder.
+last_modified() { tr -d '\r' <"$1" | awk 'tolower($1) == "last-modified:" { $1 = ""; m = substr($0, 2) } END { print m }'; }
+if curl -fsSL --retry 3 --retry-connrefused --retry-delay 15 -m 1800 -D "$WORK/osm.headers" -o "$WORK/map.osm.pbf" "$OSM_URL"; then
+  osm_sources=$OSM_URL
+  osm_modified=$(last_modified "$WORK/osm.headers")
+else
+  echo "map: $OSM_URL failed; merging ${OSM_FALLBACK[*]}" >&2
+  parts=() osm_modified=
+  for url in "${OSM_FALLBACK[@]}"; do
+    part=$WORK/part-${#parts[@]}.osm.pbf
+    curl -fsSL --retry 3 --retry-connrefused --retry-delay 15 -m 1800 -D "$part.headers" -o "$part" "$url" || die osm_download
+    parts+=("$part")
+    osm_modified="${osm_modified:+$osm_modified, }$(last_modified "$part.headers")"
+  done
+  # Both extracts carry the border area: merge keeps one copy of every object.
+  osmium merge "${parts[@]}" -o "$WORK/map.osm.pbf" -f pbf,add_metadata=false || die osm_merge
+  rm -f "$WORK"/part-*
+  osm_sources="${OSM_FALLBACK[*]}"
+fi
 osm_bytes=$(stat -c %s "$WORK/map.osm.pbf")
 osmium tags-filter "$WORK/map.osm.pbf" "${OSM_FILTER[@]}" -o "$WORK/ireland.osm.pbf" -f pbf,add_metadata=false || die osm_filter
 rm -f "$WORK/map.osm.pbf" "$WORK/gtfs.headers" "$WORK/osm.headers"
@@ -219,7 +238,7 @@ mv "$WORK/graph.obj" "$OUT/graph.obj"
 tar -czf "$OUT/logs.tar.gz" -C "$WORK" streets.log transit.log serve.log gc-streets.log gc-transit.log gc-serve.log
 M_TAG=$TAG M_IMAGE=$OTP_IMAGE M_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) M_COMMIT=${GITHUB_SHA-} \
   M_GTFS_URL=$GTFS_URL M_GTFS_ETAG=$gtfs_etag M_GTFS_SHA=$gtfs_sha M_GTFS_BYTES=$gtfs_bytes \
-  M_OSM_URL=$OSM_URL M_OSM_MODIFIED=$osm_modified M_OSM_BYTES=$osm_bytes M_OSM_FILTERED_BYTES=$osm_filtered_bytes \
+  M_OSM_SOURCES=$osm_sources M_OSM_MODIFIED=$osm_modified M_OSM_BYTES=$osm_bytes M_OSM_FILTERED_BYTES=$osm_filtered_bytes \
   M_GRAPH_SHA=$graph_sha M_GRAPH_BYTES=$graph_bytes M_CPUS=$cpus M_MEM=$mem_total_mb \
   python3 -I - "$WORK" "$OUT/manifest.json" <<'EOF'
 import json, os, sys
@@ -233,7 +252,7 @@ json.dump({
     "recipe_commit": E["M_COMMIT"],
     "otp_image": E["M_IMAGE"],
     "gtfs": {"url": E["M_GTFS_URL"], "etag": E["M_GTFS_ETAG"], "sha256": E["M_GTFS_SHA"], "bytes": int(E["M_GTFS_BYTES"])},
-    "osm": {"url": E["M_OSM_URL"], "last_modified": E["M_OSM_MODIFIED"], "bytes": int(E["M_OSM_BYTES"]),
+    "osm": {"sources": E["M_OSM_SOURCES"].split(), "last_modified": E["M_OSM_MODIFIED"], "bytes": int(E["M_OSM_BYTES"]),
             "filtered_bytes": int(E["M_OSM_FILTERED_BYTES"])},
     "graph": {"sha256": E["M_GRAPH_SHA"], "bytes": int(E["M_GRAPH_BYTES"])},
     "runner": {"cpus": int(E["M_CPUS"]), "mem_total_mb": int(E["M_MEM"])},
