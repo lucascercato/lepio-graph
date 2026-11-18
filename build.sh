@@ -5,8 +5,11 @@
 #   TAG=graph-YYYYMMDD-HHMM ./build.sh
 #   TEST_HEAP_MB=6000   optional: cap the transit build heap for a sizing test
 #
-# Needs docker, osmium-tool, curl and python3 on Linux. Scratch files go to work/, results to out/
-# (graph.obj, manifest.json, logs.tar.gz). Exits 0 only when the graph was built and it routes.
+#   OTP_MODE=direct     optional: run the OpenTripPlanner installed on this machine instead of one container per step
+#
+# Needs osmium-tool, curl and python3 on Linux, plus docker or, with OTP_MODE=direct, the inside of the OpenTripPlanner
+# image itself (cloudrun/Dockerfile). Scratch files go to work/, results to out/ (graph.obj, manifest.json,
+# logs.tar.gz). Exits 0 only when the graph was built and it routes.
 set -Eeuo pipefail
 
 OTP_IMAGE=opentripplanner/opentripplanner:2.10.0@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933
@@ -23,15 +26,27 @@ STREETS_HEAP_MB=8000
 TRANSIT_HEAP_MB=${TEST_HEAP_MB:-12000}
 SERVE_HEAP_MB=8000
 MIN_GRAPH_BYTES=$((300 * 1048576))
+OTP_MODE=${OTP_MODE:-docker}
 
 [[ ${TAG-} =~ ^graph-[0-9]{8}-[0-9]{4}$ ]] || { echo "TAG must look like graph-YYYYMMDD-HHMM" >&2; exit 2; }
 [[ $TRANSIT_HEAP_MB =~ ^[0-9]{3,6}$ ]] || { echo "TEST_HEAP_MB must be a number of megabytes" >&2; exit 2; }
+[[ $OTP_MODE == docker || $OTP_MODE == direct ]] || { echo "OTP_MODE must be docker or direct" >&2; exit 2; }
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$ROOT/work
 OUT=$ROOT/out
 cpus=$(nproc)
 mem_total_mb=$(free -m | awk '$1 == "Mem:" { print $2 }')
+platform=local
+if [ -n "${GITHUB_ACTIONS-}" ]; then platform=github-actions; fi
+if [ -n "${CLOUD_RUN_JOB-}" ]; then platform=cloud-run; fi
+# The build steps never need the network. In a container that is --network none; run directly, it is a private
+# network namespace, when this machine allows one.
+ISOLATE=()
+network_isolated=true
+if [ "$OTP_MODE" = direct ]; then
+  if unshare -rn true 2>/dev/null; then ISOLATE=(unshare -rn); else network_isolated=false; fi
+fi
 
 summary() { # printed on every exit, pass or fail: the measurements are the point of a sizing run
   python3 -I - "$WORK" "$TAG" "$cpus" "$mem_total_mb" <<'EOF' | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" || true
@@ -69,6 +84,58 @@ sample() { # sample <container id>: keeps the highest memory the container has u
   done
 }
 
+sample_direct() { # sample_direct <pid>: the same two numbers without a container: the JVM, and the whole machine (files kept in memory included)
+  local v
+  v=$(awk '$1 == "VmHWM:" { print int($2 / 1024) }' "/proc/$1/status" 2>/dev/null || true)
+  if [ -n "$v" ]; then anon=$v; fi
+  v=$(awk '$1 == "MemTotal:" { t = $2 } $1 == "MemAvailable:" { a = $2 } END { print int((t - a) / 1024) }' /proc/meminfo)
+  if [ "$v" -gt "${peak:-0}" ]; then peak=$v; fi
+}
+
+id= otp_code=
+otp_start() { # otp_start <name> <folder> <network: none|local> <java options> <OTP arguments…>: starts OTP in the background, sets $id
+  local name=$1 dir=$2 net=$3 opts=$4
+  shift 4
+  if [ "$OTP_MODE" = direct ]; then
+    local wrap=()
+    if [ "$net" = none ]; then wrap=("${ISOLATE[@]}"); fi
+    JAVA_TOOL_OPTIONS="$opts -Xlog:gc:file=$dir/gc-$name.log" "${wrap[@]}" \
+      java -cp @/app/jib-classpath-file @/app/jib-main-class-file "$dir/" "$@" >"$WORK/$name.log" 2>&1 &
+    id=$!
+  else
+    local network=(--network none)
+    if [ "$net" = local ]; then network=(-p 127.0.0.1:8080:8080); fi
+    id=$(docker run -d --name "otp-$name" "${network[@]}" --user "$(id -u):$(id -g)" \
+      --memory="$CONTAINER_MEM" --memory-swap="$CONTAINER_MEM" \
+      -e JAVA_TOOL_OPTIONS="$opts -Xlog:gc:file=/var/opentripplanner/gc-$name.log" \
+      -v "$dir":/var/opentripplanner "$OTP_IMAGE" "$@")
+  fi
+}
+
+otp_alive() { # otp_alive <name>
+  if [ "$OTP_MODE" = direct ]; then
+    kill -0 "$id" 2>/dev/null
+  else
+    [ "$(docker inspect -f '{{.State.Running}}' "otp-$1")" = true ]
+  fi
+}
+
+otp_sample() {
+  if [ "$OTP_MODE" = direct ]; then sample_direct "$id"; else sample "$id"; fi
+}
+
+otp_end() { # otp_end <name>: stops it if it is still running, keeps its log in work/<name>.log, sets $otp_code
+  if [ "$OTP_MODE" = direct ]; then
+    kill "$id" 2>/dev/null || true
+    otp_code=0
+    wait "$id" || otp_code=$?
+  else
+    otp_code=$(docker inspect -f '{{.State.ExitCode}}' "otp-$1")
+    docker logs "otp-$1" >"$WORK/$1.log" 2>&1 || true
+    docker rm -f "otp-$1" >/dev/null
+  fi
+}
+
 record() { # record <step> <heap MB> <seconds> <container peak MB> <anon peak MB> <exit code>: adds what the GC log says
   python3 -I - "$WORK/gc-$1.log" "$WORK/m-$1.json" "$@" <<'EOF'
 import json, re, sys
@@ -101,24 +168,19 @@ json.dump({
 EOF
 }
 
-run_step() { # run_step <step> <heap MB> <OTP arguments…>: one OTP run in a container with no network
-  local step=$1 heap=$2 t0=$SECONDS id code
+run_step() { # run_step <step> <heap MB> <OTP arguments…>: one OTP run with no network
+  local step=$1 heap=$2 t0=$SECONDS
   shift 2
   peak= anon=
-  id=$(docker run -d --name "otp-$step" --network none --user "$(id -u):$(id -g)" \
-    --memory="$CONTAINER_MEM" --memory-swap="$CONTAINER_MEM" \
-    -e JAVA_TOOL_OPTIONS="-Xmx${heap}m -XX:+UseCompactObjectHeaders -XX:+UseSerialGC -Xlog:gc:file=/var/opentripplanner/gc-$step.log" \
-    -v "$WORK":/var/opentripplanner "$OTP_IMAGE" "$@")
-  while [ "$(docker inspect -f '{{.State.Running}}' "otp-$step")" = true ]; do
-    sample "$id"
+  otp_start "$step" "$WORK" none "-Xmx${heap}m -XX:+UseCompactObjectHeaders -XX:+UseSerialGC" "$@"
+  while otp_alive "$step"; do
+    otp_sample
     sleep 2
   done
-  code=$(docker inspect -f '{{.State.ExitCode}}' "otp-$step")
-  docker logs "otp-$step" >"$WORK/$step.log" 2>&1 || true
-  docker rm -f "otp-$step" >/dev/null
-  record "$step" "$heap" "$((SECONDS - t0))" "$peak" "$anon" "$code"
-  if [ "$code" != 0 ]; then
-    echo "--- last lines of the $step log (exit code $code)" >&2
+  otp_end "$step"
+  record "$step" "$heap" "$((SECONDS - t0))" "$peak" "$anon" "$otp_code"
+  if [ "$otp_code" != 0 ]; then
+    echo "--- last lines of the $step log (exit code $otp_code)" >&2
     tail -n 40 "$WORK/$step.log" >&2
     return 1
   fi
@@ -129,16 +191,13 @@ otp_query() { # otp_query <JSON body>: one GraphQL call to the OTP started by se
 }
 
 serve_check() { # the new graph must load and answer a known route: Heuston to Connolly, tomorrow 10:00 UTC, with a transit leg
-  local t0=$SECONDS id ready=0 code=1 body answer
+  local t0=$SECONDS ready=0 code=1 body answer
   peak= anon=
   mkdir "$WORK/serve"
   ln "$WORK/graph.obj" "$WORK/serve/graph.obj"
-  id=$(docker run -d --name otp-serve -p 127.0.0.1:8080:8080 --user "$(id -u):$(id -g)" \
-    --memory="$CONTAINER_MEM" --memory-swap="$CONTAINER_MEM" \
-    -e JAVA_TOOL_OPTIONS="-Xmx${SERVE_HEAP_MB}m -XX:+UseCompactObjectHeaders -Xlog:gc:file=/var/opentripplanner/gc-serve.log" \
-    -v "$WORK/serve":/var/opentripplanner "$OTP_IMAGE" --load --serve)
-  while [ $((SECONDS - t0)) -lt 300 ] && [ "$(docker inspect -f '{{.State.Running}}' otp-serve)" = true ]; do
-    sample "$id"
+  otp_start serve "$WORK/serve" local "-Xmx${SERVE_HEAP_MB}m -XX:+UseCompactObjectHeaders" --load --serve
+  while [ $((SECONDS - t0)) -lt 300 ] && otp_alive serve; do
+    otp_sample
     if otp_query '{"query":"{ feeds { feedId } }"}' 2>/dev/null | grep -q feedId; then
       ready=1
       break
@@ -167,12 +226,11 @@ sys.exit(0 if any(leg["transitLeg"] for e in edges for leg in e["node"]["legs"])
     else
       echo "serve check: no itinerary with a transit leg: ${answer:0:600}" >&2
     fi
-    sample "$id"
+    otp_sample
   else
     echo "serve check: OTP was not ready within 300 s" >&2
   fi
-  docker logs otp-serve >"$WORK/serve.log" 2>&1 || true
-  docker rm -f otp-serve >/dev/null
+  otp_end serve
   mv "$WORK/serve/gc-serve.log" "$WORK/gc-serve.log" 2>/dev/null || true
   rm -rf "$WORK/serve"
   record serve "$SERVE_HEAP_MB" "$((SECONDS - t0))" "$peak" "$anon" "$code"
@@ -186,7 +244,7 @@ rm -rf "$WORK" "$OUT"
 mkdir -p "$WORK" "$OUT"
 trap summary EXIT
 
-echo "runner: $cpus CPUs, $mem_total_mb MB of memory; transit heap cap ${TRANSIT_HEAP_MB} MB"
+echo "runner: $cpus CPUs, $mem_total_mb MB of memory; transit heap cap ${TRANSIT_HEAP_MB} MB; $platform, OTP mode $OTP_MODE, build steps without network: $network_isolated"
 free -m
 df -h "$ROOT" | tail -n 1
 
@@ -236,10 +294,11 @@ serve_check || die serve_check
 graph_sha=$(sha256sum "$WORK/graph.obj" | cut -d' ' -f1)
 mv "$WORK/graph.obj" "$OUT/graph.obj"
 tar -czf "$OUT/logs.tar.gz" -C "$WORK" streets.log transit.log serve.log gc-streets.log gc-transit.log gc-serve.log
-M_TAG=$TAG M_IMAGE=$OTP_IMAGE M_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) M_COMMIT=${GITHUB_SHA-} \
+M_TAG=$TAG M_IMAGE=$OTP_IMAGE M_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) M_COMMIT=${RECIPE_COMMIT:-${GITHUB_SHA-}} \
   M_GTFS_URL=$GTFS_URL M_GTFS_ETAG=$gtfs_etag M_GTFS_SHA=$gtfs_sha M_GTFS_BYTES=$gtfs_bytes \
   M_OSM_SOURCES=$osm_sources M_OSM_MODIFIED=$osm_modified M_OSM_BYTES=$osm_bytes M_OSM_FILTERED_BYTES=$osm_filtered_bytes \
   M_GRAPH_SHA=$graph_sha M_GRAPH_BYTES=$graph_bytes M_CPUS=$cpus M_MEM=$mem_total_mb \
+  M_PLATFORM=$platform M_MODE=$OTP_MODE M_ISOLATED=$network_isolated \
   python3 -I - "$WORK" "$OUT/manifest.json" <<'EOF'
 import json, os, sys
 work, out = sys.argv[1:3]
@@ -255,7 +314,8 @@ json.dump({
     "osm": {"sources": E["M_OSM_SOURCES"].split(), "last_modified": E["M_OSM_MODIFIED"], "bytes": int(E["M_OSM_BYTES"]),
             "filtered_bytes": int(E["M_OSM_FILTERED_BYTES"])},
     "graph": {"sha256": E["M_GRAPH_SHA"], "bytes": int(E["M_GRAPH_BYTES"])},
-    "runner": {"cpus": int(E["M_CPUS"]), "mem_total_mb": int(E["M_MEM"])},
+    "runner": {"cpus": int(E["M_CPUS"]), "mem_total_mb": int(E["M_MEM"]), "platform": E["M_PLATFORM"],
+               "otp_mode": E["M_MODE"], "network_isolated": E["M_ISOLATED"] == "true"},
     "streets": step("streets"),
     "transit": step("transit"),
     "serve": step("serve"),

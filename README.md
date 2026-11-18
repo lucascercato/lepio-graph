@@ -29,6 +29,12 @@ TAG=graph-$(date -u +%Y%m%d-%H%M) ./build.sh
 
 The build needs a machine with 16 GB of memory.
 
+### Without Docker
+
+Where containers cannot be started (a container job service, for example), the whole build runs inside one image: `cloudrun/Dockerfile` adds the build tools to the pinned OpenTripPlanner image and sets `OTP_MODE=direct`, which makes `build.sh` run that OpenTripPlanner directly. `cloudrun/run.sh` is the entry point; with `GCS_BUCKET` set it uploads the same three files to a Cloud Storage bucket, under the same relative paths as the releases here. `cloudrun/cloudbuild.yaml` builds the image.
+
+In this mode the manifest's `container_peak_mb` is the memory in use on the whole machine, files kept in memory included.
+
 ## Data sources and licences
 
 - **Timetables:** Transport for Ireland / National Transport Authority GTFS data, licensed under the [Creative Commons Attribution 4.0 International licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). Contains Irish Public Sector Data (Transport for Ireland).

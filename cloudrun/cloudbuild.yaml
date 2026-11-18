@@ -1,0 +1,18 @@
+# Builds the image of cloudrun/Dockerfile with Google Cloud Build. From the repository root:
+#
+#   gcloud builds submit . --config cloudrun/cloudbuild.yaml \
+#     --substitutions _IMAGE=<registry path>:<tag>,_RECIPE_COMMIT=<commit of this repository>
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        otp_image=$$(sed -n 's/^OTP_IMAGE=//p' build.sh)
+        docker build -f cloudrun/Dockerfile --build-arg "OTP_IMAGE=$$otp_image" \
+          --build-arg "RECIPE_COMMIT=$_RECIPE_COMMIT" -t "$_IMAGE" .
+images:
+  - $_IMAGE
+options:
+  logging: CLOUD_LOGGING_ONLY
