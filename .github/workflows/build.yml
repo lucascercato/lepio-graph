@@ -4,6 +4,9 @@ on:
   schedule:
     # Transport for Ireland republishes its timetables around midnight UTC.
     - cron: '47 0 * * *'
+    # GitHub may delay or drop a scheduled run (it dropped the first one, 18 Nov 2026).
+    # A second chance before the server swaps graphs at 03:15. If both run, two releases are published.
+    - cron: '17 2 * * *'
   workflow_dispatch:
     inputs:
       test_heap_mb:
