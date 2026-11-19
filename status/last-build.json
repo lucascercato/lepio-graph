@@ -1,8 +1,8 @@
 {
  "schema": 1,
- "tag": "graph-20261119-0757",
- "built_at": "2026-11-19T08:04:38Z",
- "recipe_commit": "bee6ffca4a9fd170647aa925a9a7e491e073d252",
+ "tag": "graph-20261119-1024",
+ "built_at": "2026-11-19T10:30:31Z",
+ "recipe_commit": "c996f0ba435a29d45db9c2687e0f5588e1efd33b",
  "otp_image": "opentripplanner/opentripplanner:2.10.0@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933",
  "gtfs": {
   "url": "https://www.transportforireland.ie/transitData/Data/GTFS_All.zip",
@@ -12,16 +12,15 @@
  },
  "osm": {
   "sources": [
-   "https://download.openstreetmap.fr/extracts/europe/ireland-latest.osm.pbf",
-   "https://download.openstreetmap.fr/extracts/europe/united_kingdom/northern_ireland-latest.osm.pbf"
+   "https://download.geofabrik.de/europe/ireland-and-northern-ireland-latest.osm.pbf"
   ],
-  "last_modified": "Thu, 19 Nov 2026 01:32:16 GMT, Thu, 19 Nov 2026 02:12:30 GMT",
-  "bytes": 378898614,
-  "filtered_bytes": 98311248
+  "last_modified": "Thu, 19 Nov 2026 01:17:24 GMT",
+  "bytes": 418329448,
+  "filtered_bytes": 98311297
  },
  "graph": {
-  "sha256": "7e4711734eaf71438a45381a3eb16e149cbb9c36d19ad3dc9a2f4af18f812be2",
-  "bytes": 562383134
+  "sha256": "f40028c08eb1d107478a518b697902e781107f01dd275f65b2a4077b90ff5bfe",
+  "bytes": 562377685
  },
  "runner": {
   "cpus": 4,
@@ -33,37 +32,37 @@
  "streets": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 110,
-  "container_peak_mb": 5914,
-  "anon_peak_mb": 5382,
+  "seconds": 104,
+  "container_peak_mb": 5915,
+  "anon_peak_mb": 5496,
   "full_gcs": 1,
-  "young_gcs": 346,
-  "gc_pause_total_s": 22,
-  "live_after_full_gc_max_mb": 1136,
-  "occupancy_before_gc_max_mb": 4281
+  "young_gcs": 344,
+  "gc_pause_total_s": 21,
+  "live_after_full_gc_max_mb": 1132,
+  "occupancy_before_gc_max_mb": 4274
  },
  "transit": {
   "exit_code": 0,
   "heap_cap_mb": 12000,
-  "seconds": 190,
-  "container_peak_mb": 11099,
-  "anon_peak_mb": 10530,
+  "seconds": 174,
+  "container_peak_mb": 11118,
+  "anon_peak_mb": 10547,
   "full_gcs": 1,
   "young_gcs": 643,
-  "gc_pause_total_s": 32,
-  "live_after_full_gc_max_mb": 4356,
-  "occupancy_before_gc_max_mb": 8597
+  "gc_pause_total_s": 29,
+  "live_after_full_gc_max_mb": 4359,
+  "occupancy_before_gc_max_mb": 8661
  },
  "serve": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 23,
-  "container_peak_mb": 4402,
-  "anon_peak_mb": 4388,
+  "seconds": 22,
+  "container_peak_mb": 4076,
+  "anon_peak_mb": 4063,
   "full_gcs": 0,
-  "young_gcs": 32,
+  "young_gcs": 30,
   "gc_pause_total_s": 2,
   "live_after_full_gc_max_mb": null,
-  "occupancy_before_gc_max_mb": 4037
+  "occupancy_before_gc_max_mb": 3420
  }
 }
