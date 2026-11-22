@@ -1,8 +1,8 @@
 {
  "schema": 1,
- "tag": "graph-20261122-0728",
- "built_at": "2026-11-22T07:35:41Z",
- "recipe_commit": "952177db6f73330d3abf6536e56b31cb3b43b01e",
+ "tag": "graph-20261122-0949",
+ "built_at": "2026-11-22T09:57:08Z",
+ "recipe_commit": "719b34ba35f9f7318ebe9e0fd9c6198d9c6ea956",
  "otp_image": "opentripplanner/opentripplanner:2.10.0@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933",
  "gtfs": {
   "url": "https://www.transportforireland.ie/transitData/Data/GTFS_All.zip",
@@ -20,12 +20,12 @@
   "filtered_bytes": 98347073
  },
  "graph": {
-  "sha256": "da38b55f8a211fbf5ab7a4f08c20fef1c9140ee9a4a512633d58883f4beb3123",
-  "bytes": 566359481
+  "sha256": "c0091482f2ef0deb8fde837e63e9d57e9e49dd23e7d83f0af30f9091343efdea",
+  "bytes": 566360622
  },
  "runner": {
   "cpus": 4,
-  "mem_total_mb": 15983,
+  "mem_total_mb": 15701,
   "platform": "github-actions",
   "otp_mode": "docker",
   "network_isolated": true
@@ -33,37 +33,37 @@
  "streets": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 112,
-  "container_peak_mb": 5950,
-  "anon_peak_mb": 5418,
+  "seconds": 97,
+  "container_peak_mb": 5802,
+  "anon_peak_mb": 5408,
   "full_gcs": 1,
   "young_gcs": 342,
-  "gc_pause_total_s": 20,
-  "live_after_full_gc_max_mb": 1145,
-  "occupancy_before_gc_max_mb": 4323
+  "gc_pause_total_s": 19,
+  "live_after_full_gc_max_mb": 1143,
+  "occupancy_before_gc_max_mb": 4279
  },
  "transit": {
   "exit_code": 0,
   "heap_cap_mb": 12000,
-  "seconds": 183,
-  "container_peak_mb": 11502,
-  "anon_peak_mb": 10921,
+  "seconds": 162,
+  "container_peak_mb": 11273,
+  "anon_peak_mb": 10763,
   "full_gcs": 1,
-  "young_gcs": 127,
+  "young_gcs": 128,
   "gc_pause_total_s": 27,
-  "live_after_full_gc_max_mb": 4580,
-  "occupancy_before_gc_max_mb": 9325
+  "live_after_full_gc_max_mb": 4577,
+  "occupancy_before_gc_max_mb": 9019
  },
  "serve": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 24,
-  "container_peak_mb": 4326,
-  "anon_peak_mb": 4313,
+  "seconds": 22,
+  "container_peak_mb": 4994,
+  "anon_peak_mb": 4979,
   "full_gcs": 0,
-  "young_gcs": 32,
+  "young_gcs": 29,
   "gc_pause_total_s": 2,
   "live_after_full_gc_max_mb": null,
-  "occupancy_before_gc_max_mb": 3794
+  "occupancy_before_gc_max_mb": 4434
  }
 }
