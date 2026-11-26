@@ -1,8 +1,8 @@
 {
  "schema": 1,
- "tag": "graph-20261126-0854",
- "built_at": "2026-11-26T09:02:14Z",
- "recipe_commit": "67504a57f9b0be2dc2ff5427d0f4920bc03acf94",
+ "tag": "graph-20261126-1056",
+ "built_at": "2026-11-26T11:03:42Z",
+ "recipe_commit": "3480e1ff9119af88ccbb85754ce10fdf3e87a14a",
  "otp_image": "opentripplanner/opentripplanner:2.10.0@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933",
  "gtfs": {
   "url": "https://www.transportforireland.ie/transitData/Data/GTFS_All.zip",
@@ -20,8 +20,8 @@
   "filtered_bytes": 98430356
  },
  "graph": {
-  "sha256": "a7c7f358f6824a10f18a2b75f89f7e1005cbbe2c3b0882a8db29fa7423b3f988",
-  "bytes": 561276005
+  "sha256": "05b009a77d51600b88cdd7ef5d4ea9941ce9d671cf5590975c7269b4f1273965",
+  "bytes": 561276037
  },
  "runner": {
   "cpus": 4,
@@ -33,37 +33,37 @@
  "streets": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 103,
-  "container_peak_mb": 5863,
-  "anon_peak_mb": 5456,
+  "seconds": 106,
+  "container_peak_mb": 5812,
+  "anon_peak_mb": 5405,
   "full_gcs": 1,
-  "young_gcs": 345,
+  "young_gcs": 344,
   "gc_pause_total_s": 21,
   "live_after_full_gc_max_mb": 1128,
-  "occupancy_before_gc_max_mb": 4271
+  "occupancy_before_gc_max_mb": 4285
  },
  "transit": {
   "exit_code": 0,
   "heap_cap_mb": 12000,
-  "seconds": 174,
-  "container_peak_mb": 10985,
-  "anon_peak_mb": 10430,
+  "seconds": 183,
+  "container_peak_mb": 11134,
+  "anon_peak_mb": 10560,
   "full_gcs": 1,
   "young_gcs": 126,
-  "gc_pause_total_s": 27,
-  "live_after_full_gc_max_mb": 4396,
-  "occupancy_before_gc_max_mb": 8763
+  "gc_pause_total_s": 29,
+  "live_after_full_gc_max_mb": 4397,
+  "occupancy_before_gc_max_mb": 9425
  },
  "serve": {
   "exit_code": 0,
   "heap_cap_mb": 8000,
-  "seconds": 22,
-  "container_peak_mb": 4729,
-  "anon_peak_mb": 4714,
+  "seconds": 23,
+  "container_peak_mb": 5133,
+  "anon_peak_mb": 5118,
   "full_gcs": 0,
-  "young_gcs": 32,
+  "young_gcs": 26,
   "gc_pause_total_s": 2,
   "live_after_full_gc_max_mb": null,
-  "occupancy_before_gc_max_mb": 3987
+  "occupancy_before_gc_max_mb": 4302
  }
 }
